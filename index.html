@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オフライン多機能会場マップ (ACP対応)</title>
+    <style>
+        :root {
+            --primary: #007aff;
+            --bg-color: #f4f6f8;
+            --panel-bg: #ffffff;
+        }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 隠しラジオ・チェックボックス */
+        input[type="radio"], input[type="checkbox"] {
+            display: none;
+        }
+
+        /* --- ヘッダー・操作パネル --- */
+        .control-panel {
+            background: var(--panel-bg);
+            padding: 12px 15px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            z-index: 30;
+        }
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        /* フロアタブ */
+        .floor-tabs {
+            display: flex;
+            gap: 6px;
+        }
+        .tab-btn {
+            padding: 6px 12px;
+            background: #e4e6eb;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        /* レイヤーメニュー（ACP・諸室など） */
+        .layer-menu {
+            display: flex;
+            gap: 8px;
+            font-size: 12px;
+            background: #eee;
+            padding: 6px 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .layer-menu label {
+            cursor: pointer;
+            padding: 2px 6px;
+            background: #fff;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            white-space: nowrap;
+        }
+
+        /* ルート選択エリア */
+        .route-box {
+            margin-top: 8px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .route-box select {
+            flex: 1;
+            padding: 6px;
+            font-size: 13px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+        .route-box button {
+            padding: 6px 12px;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* --- マップ表示エリア --- */
+        .map-viewport {
+            position: relative;
+            flex: 1;
+            background: #d8e2dc;
+            overflow: auto;
+        }
+        .floor-map {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        /* 各フロアの背景画像（お手持ちの画像ファイル名に変更可能） */
+        #map-outdoor { background-image: url('outdoor.jpg'); background-color: #f0f0f0; }
+        #map-1f { background-image: url('map01.jpg'); background-color: #f0f0f0; }
+        #map-2f { background-image: url('map02.jpg'); background-color: #f0f0f0; }
+
+        /* --- レイヤーごとの要素スタイル --- */
+        /* 諸室ピン */
+        .room-pin {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid #333;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .room-pin .en {
+            font-size: 9px;
+            color: #666;
+            display: block;
+        }
+
+        /* ゾーンレイアウト (色分けエリア例) */
+        .zone-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: none;
+        }
+        .zone-box {
+            position: absolute;
+            border: 2px dashed #ff4757;
+            background: rgba(255, 71, 87, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #d63031;
+            font-size: 12px;
+        }
+
+        /* ルート（導線）レイヤー */
+        .route-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: none;
+        }
+        .route-line {
+            position: absolute;
+            background: #007aff;
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        /* --- 下部情報パネル --- */
+        .info-panel {
+            background: var(--panel-bg);
+            padding: 12px 15px;
+            border-top: 1px solid #ddd;
+            font-size: 13px;
+            color: #444;
+            max-height: 25vh;
+            overflow-y: auto;
+        }
+
+        /* ==========================================
+           連動ロジック (CSS Selector)
+           ========================================== */
+
+        /* フロアタブ切り替え */
+        #tab-outdoor:checked ~ .map-viewport #map-outdoor { display: block; }
+        #tab-1f:checked ~ .map-viewport #map-1f { display: block; }
+        #tab-2f:checked ~ .map-viewport #map-2f { display: block; }
+
+        #tab-outdoor:checked ~ .control-panel label[for="tab-outdoor"],
+        #tab-1f:checked ~ .control-panel label[for="tab-1f"],
+        #tab-2f:checked ~ .control-panel label[for="tab-2f"] {
+            background: #333;
+            color: #fff;
+        }
+
+        /* レイヤー表示切り替え */
+        #layer-room:checked ~ .map-viewport .room-pin-container { display: block; }
+        .room-pin-container { display: none; }
+
+        #layer-zone:checked ~ .map-viewport .zone-layer { display: block; }
+        #layer-route:checked ~ .map-viewport .route-layer { display: block; }
+
+        /* レイヤーボタンの選択色 */
+        #layer-room:checked ~ .control-panel label[for="layer-room"] { background: #007aff; color: #fff; border-color: #007aff; }
+        #layer-zone:checked ~ .control-panel label[for="layer-zone"] { background: #007aff; color: #fff; border-color: #007aff; }
+        #layer-route:checked ~ .control-panel label[for="layer-route"] { background: #007aff; color: #fff; border-color: #007aff; }
+    </style>
+</head>
+<body>
+
+    <!-- 状態管理用ラジオ・チェックボックス -->
+    <input type="radio" id="tab-outdoor" name="floor" checked>
+    <input type="radio" id="tab-1f" name="floor">
+    <input type="radio" id="tab-2f" name="floor">
+
+    <input type="checkbox" id="layer-room" checked>
+    <input type="checkbox" id="layer-zone">
+    <input type="checkbox" id="layer-route">
+
+    <!-- コントロールパネル -->
+    <div class="control-panel">
+        <div class="top-row">
+            <div class="floor-tabs">
+                <label for="tab-outdoor" class="tab-btn">屋外</label>
+                <label for="tab-1f" class="tab-btn">1階</label>
+                <label for="tab-2f" class="tab-btn">2階</label>
+            </div>
+            <div class="layer-menu">
+                <label for="layer-room">📍 諸室</label>
+                <label for="layer-zone">📐 ゾーン</label>
+                <label for="layer-route">〰️ ルート</label>
+            </div>
+        </div>
+
+        <!-- プルダウン式ルート案内 -->
+        <div class="route-box">
+            <select id="start-select">
+                <option value="entrance">現在地: 正面エントランス (VEM01-ENT)</option>
+                <option value="voc">現在地: ボランティア控室 (VEM01-VOC)</option>
+            </select>
+            <select id="goal-select">
+                <option value="pool">目的地: メインプール (SPO-POOL)</option>
+                <option value="office">目的地: 大会本部 (ACP-HQ)</option>
+            </select>
+            <button onclick="calcRoute()">案内</button>
+        </div>
+    </div>
+
+    <!-- マップ表示エリア -->
+    <div class="map-viewport">
+
+        <!-- 屋外マップ -->
+        <div id="map-outdoor" class="floor-map">
+            <div class="room-pin-container">
+                <div class="room-pin" style="top: 30%; left: 40%;">
+                    大会本部<span class="en">ACP-HQ</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1階マップ -->
+        <div id="map-1f" class="floor-map">
+            <!-- 諸室レイヤー -->
+            <div class="room-pin-container">
+                <div class="room-pin" style="top: 20%; left: 35%;">
+                    ボランティア控室<span class="en">VEM01-VOC</span>
+                </div>
+                <div class="room-pin" style="top: 50%; left: 50%;">
+                    メインプール<span class="en">SPO-POOL</span>
+                </div>
+            </div>
+
+            <!-- ゾーンレイアウトレイヤー -->
+            <div class="zone-layer">
+                <div class="zone-box" style="top: 40%; left: 25%; width: 50%; height: 35%;">
+                    競技エリア / Sport Zone
+                </div>
+            </div>
+
+            <!-- ルートレイヤー -->
+            <div class="route-layer">
+                <div class="route-line" style="top: 35%; left: 35%; width: 15%; transform: rotate(45deg);"></div>
+            </div>
+        </div>
+
+        <!-- 2階マップ -->
+        <div id="map-2f" class="floor-map">
+            <div class="room-pin-container">
+                <div class="room-pin" style="top: 40%; left: 50%;">
+                    観覧席スタンド<span class="en">SPC-STD</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 情報パネル -->
+    <div class="info-panel" id="info-panel">
+        <b>【案内ステータス】</b> 上部のレイヤーボタンで表示を切り替え、プルダウンからルートを検索できます。
+    </div>
+
+    <script>
+        function calcRoute() {
+            const start = document.getElementById("start-select").value;
+            const goal = document.getElementById("goal-select").value;
+            const panel = document.getElementById("info-panel");
+
+            if(start === goal) {
+                panel.innerHTML = "⚠️ 出発地と目的地が同じです。";
+                return;
+            }
+
+            // 簡単な案内メッセージの切り替え
+            panel.innerHTML = `<b>【ルート案内】</b> 選択した地点から目的地へ向かいます。<br>
+            1. 「ルート」レイヤーをONにすると、図面上に導線が表示されます。<br>
+            2. メイン通路に沿って約2分（約100m）進んでください。`;
+        }
+    </script>
+
+</body>
+</html>
