@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オフライン多機能会場マップ (データ駆動型)</title>
+    <title>オフライン多機能会場マップ</title>
     <style>
         :root {
             --primary: #007aff;
@@ -94,7 +94,7 @@
             object-fit: contain;
         }
 
-        /* --- 自動生成されるピンの共通スタイル --- */
+        /* --- ピンのスタイル --- */
         .map-pin {
             position: absolute;
             cursor: pointer;
@@ -106,7 +106,6 @@
             transform: translate(-50%, -50%) scale(0.9);
         }
 
-        /* 諸室用ピン */
         .room-pin {
             background: rgba(255, 255, 255, 0.95);
             border: 2px solid #333;
@@ -121,7 +120,6 @@
             display: block;
         }
 
-        /* ACP用ピン（しずく型） */
         .acp-pin {
             background: #ff4757;
             color: #fff;
@@ -142,20 +140,6 @@
             white-space: nowrap;
         }
 
-        /* ゾーンボックス */
-        .zone-box {
-            position: absolute;
-            border: 2px dashed #007aff;
-            background: rgba(0, 122, 255, 0.15);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: #0040dd;
-            font-size: 12px;
-            pointer-events: none;
-        }
-
         /* --- 下部情報パネル --- */
         .info-panel {
             background: var(--panel-bg);
@@ -173,9 +157,7 @@
             margin-bottom: 4px;
         }
 
-        /* ==========================================
-           連動ロジック (CSS)
-           ========================================== */
+        /* --- 切り替えロジック --- */
         #tab-outdoor:checked ~ .map-viewport #map-outdoor { display: block; }
         #tab-1f:checked ~ .map-viewport #map-1f { display: block; }
         #tab-2f:checked ~ .map-viewport #map-2f { display: block; }
@@ -189,13 +171,11 @@
 
         #layer-room:checked ~ .map-viewport .group-room { display: block; }
         #layer-acp:checked ~ .map-viewport .group-acp { display: block; }
-        #layer-zone:checked ~ .map-viewport .group-zone { display: block; }
 
-        .group-room, .group-acp, .group-zone { display: none; }
+        .group-room, .group-acp { display: none; }
 
         #layer-room:checked ~ .control-panel label[for="layer-room"] { background: #007aff; color: #fff; border-color: #007aff; }
         #layer-acp:checked ~ .control-panel label[for="layer-acp"] { background: #ff4757; color: #fff; border-color: #ff4757; }
-        #layer-zone:checked ~ .control-panel label[for="layer-zone"] { background: #ffa502; color: #fff; border-color: #ffa502; }
     </style>
 </head>
 <body>
@@ -206,7 +186,6 @@
 
     <input type="checkbox" id="layer-room" checked>
     <input type="checkbox" id="layer-acp" checked>
-    <input type="checkbox" id="layer-zone" checked>
 
     <div class="control-panel">
         <div class="top-row">
@@ -218,12 +197,11 @@
             <div class="layer-menu">
                 <label for="layer-room">📍 諸室</label>
                 <label for="layer-acp">🛡️ ACP</label>
-                <label for="layer-zone">📐 ゾーン</label>
             </div>
         </div>
     </div>
 
-    <!-- マップ表示エリア -->
+    <!-- マップ表示エリア（正しいファイル名を指定） -->
     <div class="map-viewport">
         <!-- 屋外マップ -->
         <div id="map-outdoor" class="floor-map">
@@ -233,27 +211,25 @@
 
         <!-- 1階マップ -->
         <div id="map-1f" class="floor-map">
-            <img src="map01.png" alt="1階マップ" onerror="this.alt='[エラー] map1f.png が見つかりません';">
+            <img src="map01.png" alt="1階マップ" onerror="this.alt='[エラー] map01.png が見つかりません';">
             <div id="pins-1f"></div>
         </div>
 
         <!-- 2階マップ -->
         <div id="map-2f" class="floor-map">
-            <img src="map02.png" alt="2階マップ" onerror="this.alt='[エラー] map2f.png が見つかりません';">
+            <img src="map02.png" alt="2階マップ" onerror="this.alt='[エラー] map02.png が見つかりません';">
             <div id="pins-2f"></div>
         </div>
     </div>
 
-    <!-- 情報パネル（ピンをタップするとここに詳細が表示されます） -->
+    <!-- 情報パネル -->
     <div class="info-panel" id="info-panel">
         <div class="info-title">ℹ️ スポットを選択してください</div>
-        <div>マップ上のピンをタップすると、諸室名・英語表記・担当部署などの詳細情報がここに表示されます。</div>
+        <div>マップ上のピンをタップすると、ご指定の形式（諸室名・英語表記・担当部署）で詳細が表示されます。</div>
     </div>
 
     <script>
-        // ==========================================
-        // 【データリスト】ここに諸室やACPのデータを追加していきます
-        // ==========================================
+        // サンプルデータ（ここにデータを追加していけます）
         const venueItems = [
             {
                 floor: "1f", type: "room", dept: "SPT", code: "SPT01", name: "Sport Information", 
@@ -271,14 +247,12 @@
                 floor: "2f", type: "room", dept: "EVS", code: "EVS09", name: "Spectator Seating", 
                 top: 45, left: 50, zone: "FOH", acp: false
             },
-            // ACP（関所）データの例
             {
                 floor: "1f", type: "acp", dept: "SEC", code: "ACP01", name: "Security Checkpoint 1", 
                 top: 30, left: 60, zone: "FOH", acp: true
             }
         ];
 
-        // データを元に自動でピンを配置するプログラム
         function renderPins() {
             venueItems.forEach(item => {
                 const container = document.getElementById(`pins-${item.floor}`);
@@ -297,13 +271,13 @@
                 pin.style.top = `${item.top}%`;
                 pin.style.left = `${item.left}%`;
 
-                // ピンがタップされたときの処理（ご指定のフォーマットで詳細を表示）
+                // タップ時の表示形式
                 pin.addEventListener("click", () => {
                     const panel = document.getElementById("info-panel");
                     panel.innerHTML = `
                         <div class="info-title">📍 ${item.name}</div>
-                        <div><b>英語表記:</b> ${item.dept}${item.code}_${item.name.replace(/\s+/g, '')}</div>
-                        <div><b>担当部署:</b> ${item.dept} ｜ <b>ゾーン:</b> ${item.zone} ｜ <b>ACP:</b> ${item.acp ? 'あり (○)' : 'なし (×)'}</div>
+                        <div><b>英語表記:</b> ${item.dept}${item.code.replace(/[^0-9]/g,'')}_${item.name.replace(/\s+/g, '')}</div>
+                        <div><b>担当部署:</b> ${item.dept} ｜ <b>ゾーン:</b> ${item.zone}</div>
                     `;
                 });
 
@@ -311,7 +285,6 @@
             });
         }
 
-        // ページ読み込み時に実行
         window.onload = renderPins;
     </script>
 
