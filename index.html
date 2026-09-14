@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オフライン多機能会場マップ</title>
+    <title>オフライン多機能会場マップ (データ駆動型)</title>
     <style>
         :root {
             --primary: #007aff;
@@ -24,6 +24,7 @@
             display: none;
         }
 
+        /* --- ヘッダー・操作パネル --- */
         .control-panel {
             background: var(--panel-bg);
             padding: 12px 15px;
@@ -70,31 +71,7 @@
             white-space: nowrap;
         }
 
-        .route-box {
-            margin-top: 8px;
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .route-box select {
-            flex: 1;
-            min-width: 140px;
-            padding: 6px;
-            font-size: 13px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-        }
-        .route-box button {
-            padding: 6px 12px;
-            background: var(--primary);
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
+        /* --- マップ表示エリア --- */
         .map-viewport {
             position: relative;
             width: 100%;
@@ -117,100 +94,88 @@
             object-fit: contain;
         }
 
-        .pin-container {
+        /* --- 自動生成されるピンの共通スタイル --- */
+        .map-pin {
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
         }
-        .pin-container > * {
-            pointer-events: auto;
+        .map-pin:active {
+            transform: translate(-50%, -50%) scale(0.9);
         }
 
-        /* 諸室ピン */
+        /* 諸室用ピン */
         .room-pin {
-            position: absolute;
             background: rgba(255, 255, 255, 0.95);
             border: 2px solid #333;
-            padding: 4px 8px;
+            padding: 3px 6px;
             border-radius: 4px;
             font-size: 11px;
             font-weight: bold;
-            cursor: pointer;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         .room-pin .en {
-            font-size: 9px;
+            font-size: 8px;
             color: #666;
             display: block;
         }
 
-        /* --- ACPピン（改良版：マーク風＋小さめの日本語フォント） --- */
+        /* ACP用ピン（しずく型） */
         .acp-pin {
-            position: absolute;
             background: #ff4757;
             color: #fff;
             border: 2px solid #fff;
-            padding: 3px 6px;
-            border-radius: 50% 50% 50% 0; /* しずく型のピン風デザイン */
-            width: 24px;
-            height: 24px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50% 50% 50% 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
-            cursor: pointer;
-            transform: translate(-50%, -100%) rotate(-45deg); /* ピンの先を下に合わせる調整 */
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transform: translate(-50%, -100%) rotate(-45deg);
         }
-        /* ピンの中の文字を真っ直ぐに戻す＆日本語を小さくする設定 */
         .acp-content {
             transform: rotate(45deg);
             text-align: center;
             white-space: nowrap;
         }
-        .acp-pin .jp {
-            font-size: 8px; /* 日本語フォントを小さく */
-            display: block;
-            line-height: 1;
-        }
-        .acp-pin .en {
-            font-size: 7px;
-            color: #ffe0e0;
-            display: block;
-            line-height: 1;
-        }
 
-        /* ゾーンレイアウト */
-        .zone-box-blue {
+        /* ゾーンボックス */
+        .zone-box {
             position: absolute;
-            border: 2px solid #007aff;
-            background: rgba(0, 122, 255, 0.2);
+            border: 2px dashed #007aff;
+            background: rgba(0, 122, 255, 0.15);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
             color: #0040dd;
-            font-size: 14px;
+            font-size: 12px;
+            pointer-events: none;
         }
 
-        .route-line {
-            position: absolute;
-            background: #2ed573;
-            height: 5px;
-            border-radius: 3px;
-        }
-
+        /* --- 下部情報パネル --- */
         .info-panel {
             background: var(--panel-bg);
-            padding: 12px 15px;
-            border-top: 1px solid #ddd;
-            font-size: 13px;
-            color: #444;
+            padding: 15px;
+            border-top: 2px solid #ddd;
+            font-size: 14px;
+            color: #333;
             margin-top: auto;
+            box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+        }
+        .info-title {
+            font-weight: bold;
+            color: var(--primary);
+            font-size: 15px;
+            margin-bottom: 4px;
         }
 
+        /* ==========================================
+           連動ロジック (CSS)
+           ========================================== */
         #tab-outdoor:checked ~ .map-viewport #map-outdoor { display: block; }
         #tab-1f:checked ~ .map-viewport #map-1f { display: block; }
         #tab-2f:checked ~ .map-viewport #map-2f { display: block; }
@@ -222,17 +187,15 @@
             color: #fff;
         }
 
-        #layer-room:checked ~ .map-viewport .layer-room-group { display: block; }
-        #layer-acp:checked ~ .map-viewport .layer-acp-group { display: block; }
-        #layer-zone:checked ~ .map-viewport .layer-zone-group { display: block; }
-        #layer-route:checked ~ .map-viewport .layer-route-group { display: block; }
+        #layer-room:checked ~ .map-viewport .group-room { display: block; }
+        #layer-acp:checked ~ .map-viewport .group-acp { display: block; }
+        #layer-zone:checked ~ .map-viewport .group-zone { display: block; }
 
-        .layer-room-group, .layer-acp-group, .layer-zone-group, .layer-route-group { display: none; }
+        .group-room, .group-acp, .group-zone { display: none; }
 
         #layer-room:checked ~ .control-panel label[for="layer-room"] { background: #007aff; color: #fff; border-color: #007aff; }
         #layer-acp:checked ~ .control-panel label[for="layer-acp"] { background: #ff4757; color: #fff; border-color: #ff4757; }
         #layer-zone:checked ~ .control-panel label[for="layer-zone"] { background: #ffa502; color: #fff; border-color: #ffa502; }
-        #layer-route:checked ~ .control-panel label[for="layer-route"] { background: #2ed573; color: #fff; border-color: #2ed573; }
     </style>
 </head>
 <body>
@@ -244,7 +207,6 @@
     <input type="checkbox" id="layer-room" checked>
     <input type="checkbox" id="layer-acp" checked>
     <input type="checkbox" id="layer-zone" checked>
-    <input type="checkbox" id="layer-route">
 
     <div class="control-panel">
         <div class="top-row">
@@ -257,72 +219,100 @@
                 <label for="layer-room">📍 諸室</label>
                 <label for="layer-acp">🛡️ ACP</label>
                 <label for="layer-zone">📐 ゾーン</label>
-                <label for="layer-route">〰️ ルート</label>
             </div>
-        </div>
-
-        <div class="route-box">
-            <select id="start-select">
-                <option value="ent">現在地: 正面エントランス (VEM-01)</option>
-            </select>
-            <select id="goal-select">
-                <option value="pool">目的地: メインプール (SPT-09)</option>
-            </select>
-            <button onclick="calcRoute()">ルート案内</button>
         </div>
     </div>
 
+    <!-- マップ表示エリア -->
     <div class="map-viewport">
-
-        <!-- 屋外マップ (ファイル名を半角英字にすることを推奨) -->
+        <!-- 屋外マップ -->
         <div id="map-outdoor" class="floor-map">
-            <img src="outdoor.png" alt="屋外マップ" onerror="this.alt='[エラー] outdoor.png が見つかりません（ファイル名を半角にしてください）';">
-            <div class="pin-container layer-acp-group">
-                <div class="acp-pin" style="top: 50%; left: 30%;">
-                    <div class="acp-content">
-                        <span class="jp">関所1</span>
-                        <span class="en">ACP-01</span>
-                    </div>
-                </div>
-            </div>
+            <img src="outdoor.png" alt="屋外マップ" onerror="this.alt='[エラー] outdoor.png が見つかりません';">
+            <div id="pins-outdoor"></div>
         </div>
 
         <!-- 1階マップ -->
         <div id="map-1f" class="floor-map">
             <img src="map1f.png" alt="1階マップ" onerror="this.alt='[エラー] map1f.png が見つかりません';">
-            <div class="pin-container layer-acp-group">
-                <div class="acp-pin" style="top: 30%; left: 60%;">
-                    <div class="acp-content">
-                        <span class="jp">関所2</span>
-                        <span class="en">ACP-02</span>
-                    </div>
-                </div>
-            </div>
+            <div id="pins-1f"></div>
         </div>
 
         <!-- 2階マップ -->
         <div id="map-2f" class="floor-map">
             <img src="map2f.png" alt="2階マップ" onerror="this.alt='[エラー] map2f.png が見つかりません';">
-            <div class="pin-container layer-acp-group">
-                <div class="acp-pin" style="top: 50%; left: 40%;">
-                    <div class="acp-content">
-                        <span class="jp">関所3</span>
-                        <span class="en">ACP-03</span>
-                    </div>
-                </div>
-            </div>
+            <div id="pins-2f"></div>
         </div>
-
     </div>
 
+    <!-- 情報パネル（ピンをタップするとここに詳細が表示されます） -->
     <div class="info-panel" id="info-panel">
-        <b>【ステータス】</b> ACPピンがマーク風（しずく型）になり、日本語フォントが小さくなりました。
+        <div class="info-title">ℹ️ スポットを選択してください</div>
+        <div>マップ上のピンをタップすると、諸室名・英語表記・担当部署などの詳細情報がここに表示されます。</div>
     </div>
 
     <script>
-        function calcRoute() {
-            document.getElementById("info-panel").innerHTML = "<b>【ルート案内】</b> ルートを計算しました。";
+        // ==========================================
+        // 【データリスト】ここに諸室やACPのデータを追加していきます
+        // ==========================================
+        const venueItems = [
+            {
+                floor: "1f", type: "room", dept: "SPT", code: "SPT01", name: "Sport Information", 
+                top: 25, left: 35, zone: "FOH", acp: false
+            },
+            {
+                floor: "1f", type: "room", dept: "SPT", code: "SPT09", name: "Athlete Training Area (Warm Up Pool)", 
+                top: 50, left: 50, zone: "BLUE", acp: true
+            },
+            {
+                floor: "outdoor", type: "room", dept: "OFS", code: "OFS01", name: "Staff Office", 
+                top: 40, left: 40, zone: "WHITE", acp: true
+            },
+            {
+                floor: "2f", type: "room", dept: "EVS", code: "EVS09", name: "Spectator Seating", 
+                top: 45, left: 50, zone: "FOH", acp: false
+            },
+            // ACP（関所）データの例
+            {
+                floor: "1f", type: "acp", dept: "SEC", code: "ACP01", name: "Security Checkpoint 1", 
+                top: 30, left: 60, zone: "FOH", acp: true
+            }
+        ];
+
+        // データを元に自動でピンを配置するプログラム
+        function renderPins() {
+            venueItems.forEach(item => {
+                const container = document.getElementById(`pins-${item.floor}`);
+                if (!container) return;
+
+                const pin = document.createElement("div");
+                
+                if (item.type === "room") {
+                    pin.className = "map-pin room-pin group-room";
+                    pin.innerHTML = `${item.dept}-${item.code.replace(item.dept,'')}<span class="en">${item.code}</span>`;
+                } else if (item.type === "acp") {
+                    pin.className = "map-pin acp-pin group-acp";
+                    pin.innerHTML = `<div class="acp-content"><span style="font-size:8px;">${item.dept}</span><span class="en">${item.code}</span></div>`;
+                }
+
+                pin.style.top = `${item.top}%`;
+                pin.style.left = `${item.left}%`;
+
+                // ピンがタップされたときの処理（ご指定のフォーマットで詳細を表示）
+                pin.addEventListener("click", () => {
+                    const panel = document.getElementById("info-panel");
+                    panel.innerHTML = `
+                        <div class="info-title">📍 ${item.name}</div>
+                        <div><b>英語表記:</b> ${item.dept}${item.code}_${item.name.replace(/\s+/g, '')}</div>
+                        <div><b>担当部署:</b> ${item.dept} ｜ <b>ゾーン:</b> ${item.zone} ｜ <b>ACP:</b> ${item.acp ? 'あり (○)' : 'なし (×)'}</div>
+                    `;
+                });
+
+                container.appendChild(pin);
+            });
         }
+
+        // ページ読み込み時に実行
+        window.onload = renderPins;
     </script>
 
 </body>
