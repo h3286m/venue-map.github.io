@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オフライン多機能会場マップ (ACP対応)</title>
+    <title>オフライン多機能会場マップ</title>
     <style>
         :root {
             --primary: #007aff;
@@ -17,8 +17,7 @@
             color: #333;
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
         }
 
         /* 隠しラジオ・チェックボックス */
@@ -31,6 +30,8 @@
             background: var(--panel-bg);
             padding: 12px 15px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
             z-index: 30;
         }
         .top-row {
@@ -38,6 +39,8 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         /* フロアタブ */
         .floor-tabs {
@@ -52,10 +55,10 @@
             font-weight: bold;
             cursor: pointer;
         }
-        /* レイヤーメニュー（ACP・諸室など） */
+        /* レイヤーメニュー */
         .layer-menu {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             font-size: 12px;
             background: #eee;
             padding: 6px 10px;
@@ -64,7 +67,7 @@
         }
         .layer-menu label {
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 3px 8px;
             background: #fff;
             border-radius: 4px;
             border: 1px solid #ccc;
@@ -98,29 +101,38 @@
         /* --- マップ表示エリア --- */
         .map-viewport {
             position: relative;
-            flex: 1;
-            background: #d8e2dc;
-            overflow: auto;
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
         .floor-map {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
             display: none;
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
+            position: relative;
+            width: 100%;
+        }
+        /* 画像を確実に表示させるための設定 */
+        .floor-map img {
+            width: 100%;
+            height: auto;
+            display: block;
         }
 
-        /* 各フロアの背景画像（お手持ちの画像ファイル名に変更可能） */
-        #map-outdoor { background-image: url('outdoor.jpg'); background-color: #f0f0f0; }
-        #map-1f { background-image: url('map01.jpg'); background-color: #f0f0f0; }
-        #map-2f { background-image: url('map02.jpg'); background-color: #f0f0f0; }
+        /* --- 各レイヤー要素の共通スタイル --- */
+        .pin-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* ピン以外はクリックを透過 */
+        }
+        .pin-container > * {
+            pointer-events: auto; /* ピン自体はクリック可能に */
+        }
 
-        /* --- レイヤーごとの要素スタイル --- */
         /* 諸室ピン */
         .room-pin {
             position: absolute;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
             border: 2px solid #333;
             padding: 4px 8px;
             border-radius: 4px;
@@ -136,32 +148,40 @@
             display: block;
         }
 
-        /* ゾーンレイアウト (色分けエリア例) */
-        .zone-layer {
+        /* ACP（アクセス管理関所）ピン */
+        .acp-pin {
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            display: none;
+            background: #ff4757;
+            color: #fff;
+            border: 2px solid #fff;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
+        .acp-pin .en {
+            font-size: 9px;
+            color: #ffe0e0;
+            display: block;
+        }
+
+        /* ゾーンレイアウト */
         .zone-box {
             position: absolute;
-            border: 2px dashed #ff4757;
-            background: rgba(255, 71, 87, 0.15);
+            border: 2px dashed #ffa502;
+            background: rgba(255, 165, 2, 0.15);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            color: #d63031;
+            color: #e67e22;
             font-size: 12px;
         }
 
         /* ルート（導線）レイヤー */
-        .route-layer {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            display: none;
-        }
         .route-line {
             position: absolute;
             background: #007aff;
@@ -176,8 +196,7 @@
             border-top: 1px solid #ddd;
             font-size: 13px;
             color: #444;
-            max-height: 25vh;
-            overflow-y: auto;
+            margin-top: auto;
         }
 
         /* ==========================================
@@ -196,17 +215,19 @@
             color: #fff;
         }
 
-        /* レイヤー表示切り替え */
-        #layer-room:checked ~ .map-viewport .room-pin-container { display: block; }
-        .room-pin-container { display: none; }
+        /* レイヤー表示切り替え (デフォルト非表示、チェック時のみ表示) */
+        #layer-room:checked ~ .map-viewport .layer-room-group { display: block; }
+        #layer-acp:checked ~ .map-viewport .layer-acp-group { display: block; }
+        #layer-zone:checked ~ .map-viewport .layer-zone-group { display: block; }
+        #layer-route:checked ~ .map-viewport .layer-route-group { display: block; }
 
-        #layer-zone:checked ~ .map-viewport .zone-layer { display: block; }
-        #layer-route:checked ~ .map-viewport .route-layer { display: block; }
+        .layer-room-group, .layer-acp-group, .layer-zone-group, .layer-route-group { display: none; }
 
         /* レイヤーボタンの選択色 */
         #layer-room:checked ~ .control-panel label[for="layer-room"] { background: #007aff; color: #fff; border-color: #007aff; }
-        #layer-zone:checked ~ .control-panel label[for="layer-zone"] { background: #007aff; color: #fff; border-color: #007aff; }
-        #layer-route:checked ~ .control-panel label[for="layer-route"] { background: #007aff; color: #fff; border-color: #007aff; }
+        #layer-acp:checked ~ .control-panel label[for="layer-acp"] { background: #ff4757; color: #fff; border-color: #ff4757; }
+        #layer-zone:checked ~ .control-panel label[for="layer-zone"] { background: #ffa502; color: #fff; border-color: #ffa502; }
+        #layer-route:checked ~ .control-panel label[for="layer-route"] { background: #2ed573; color: #fff; border-color: #2ed573; }
     </style>
 </head>
 <body>
@@ -217,6 +238,7 @@
     <input type="radio" id="tab-2f" name="floor">
 
     <input type="checkbox" id="layer-room" checked>
+    <input type="checkbox" id="layer-acp" checked>
     <input type="checkbox" id="layer-zone">
     <input type="checkbox" id="layer-route">
 
@@ -230,6 +252,7 @@
             </div>
             <div class="layer-menu">
                 <label for="layer-room">📍 諸室</label>
+                <label for="layer-acp">🛡️ ACP</label>
                 <label for="layer-zone">📐 ゾーン</label>
                 <label for="layer-route">〰️ ルート</label>
             </div>
@@ -254,43 +277,64 @@
 
         <!-- 屋外マップ -->
         <div id="map-outdoor" class="floor-map">
-            <div class="room-pin-container">
+            <img src="outdoor.jpg" alt="屋外マップ">
+            <!-- 諸室レイヤー -->
+            <div class="pin-container layer-room-group">
                 <div class="room-pin" style="top: 30%; left: 40%;">
                     大会本部<span class="en">ACP-HQ</span>
+                </div>
+            </div>
+            <!-- ACPレイヤー（関所ポイント） -->
+            <div class="pin-container layer-acp-group">
+                <div class="acp-pin" style="top: 45%; left: 35%;">
+                    関所 01<span class="en">ACP-01</span>
                 </div>
             </div>
         </div>
 
         <!-- 1階マップ -->
         <div id="map-1f" class="floor-map">
+            <img src="map01.jpg" alt="1階マップ">
             <!-- 諸室レイヤー -->
-            <div class="room-pin-container">
-                <div class="room-pin" style="top: 20%; left: 35%;">
+            <div class="pin-container layer-room-group">
+                <div class="room-pin" style="top: 25%; left: 35%;">
                     ボランティア控室<span class="en">VEM01-VOC</span>
                 </div>
-                <div class="room-pin" style="top: 50%; left: 50%;">
+                <div class="room-pin" style="top: 55%; left: 50%;">
                     メインプール<span class="en">SPO-POOL</span>
                 </div>
             </div>
-
-            <!-- ゾーンレイアウトレイヤー -->
-            <div class="zone-layer">
+            <!-- ACPレイヤー -->
+            <div class="pin-container layer-acp-group">
+                <div class="acp-pin" style="top: 30%; left: 60%;">
+                    セキュリティ検問所<span class="en">ACP-02</span>
+                </div>
+            </div>
+            <!-- ゾーンレイヤー -->
+            <div class="pin-container layer-zone-group">
                 <div class="zone-box" style="top: 40%; left: 25%; width: 50%; height: 35%;">
                     競技エリア / Sport Zone
                 </div>
             </div>
-
             <!-- ルートレイヤー -->
-            <div class="route-layer">
-                <div class="route-line" style="top: 35%; left: 35%; width: 15%; transform: rotate(45deg);"></div>
+            <div class="pin-container layer-route-group">
+                <div class="route-line" style="top: 35%; left: 35%; width: 25%; transform: rotate(15deg);"></div>
             </div>
         </div>
 
         <!-- 2階マップ -->
         <div id="map-2f" class="floor-map">
-            <div class="room-pin-container">
+            <img src="map02.jpg" alt="2階マップ">
+            <!-- 諸室レイヤー -->
+            <div class="pin-container layer-room-group">
                 <div class="room-pin" style="top: 40%; left: 50%;">
                     観覧席スタンド<span class="en">SPC-STD</span>
+                </div>
+            </div>
+            <!-- ACPレイヤー -->
+            <div class="pin-container layer-acp-group">
+                <div class="acp-pin" style="top: 50%; left: 40%;">
+                    2階入場関所<span class="en">ACP-03</span>
                 </div>
             </div>
         </div>
@@ -299,7 +343,7 @@
 
     <!-- 情報パネル -->
     <div class="info-panel" id="info-panel">
-        <b>【案内ステータス】</b> 上部のレイヤーボタンで表示を切り替え、プルダウンからルートを検索できます。
+        <b>【案内ステータス】</b> 上部のレイヤー（諸室・ACP・ゾーン・ルート）で表示を切り替えることができます。
     </div>
 
     <script>
@@ -313,10 +357,9 @@
                 return;
             }
 
-            // 簡単な案内メッセージの切り替え
             panel.innerHTML = `<b>【ルート案内】</b> 選択した地点から目的地へ向かいます。<br>
-            1. 「ルート」レイヤーをONにすると、図面上に導線が表示されます。<br>
-            2. メイン通路に沿って約2分（約100m）進んでください。`;
+            1. 上部の「ルート」ボタンをONにすると、図面上に導線が表示されます。<br>
+            2. ACP（関所）やメイン通路を経由して約2分でお進みください。`;
         }
     </script>
 
